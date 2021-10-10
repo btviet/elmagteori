@@ -1,0 +1,232 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def f_r(w,t,B): # [[vx,vy,vz],[x,y,z]]
+# This function returns the derivative of vector w
+    temp_vec = np.zeros([2,3])
+    temp_vec[1] = w[0] # The derivative of the position is the velocity
+    temp_vec[0] = (q/m)*np.cross(w[0],B) # The derivative of the velocity
+    return temp_vec
+def stegRK4(w, t, h,f,B):
+    # Take a RK4-step
+    # w is the [[vx,vy,vz],[x,y,z]] vector
+    # t is the time
+    # h is step length
+    # f is the function that returns the derivative of w
+    # B is the magnetic field at the position [x,y,z]
+    k1 =f(w,t,B)
+    k2 = f(w+h*(k1/2), t+h/2,B)
+    k3 = f(w+h*(k2/2), t+h/2,B)
+    k4 = f(w+h*k3, t+h,B)
+    neste_w = w + (h/6)*(k1+2*k2+2*k3+k4)
+    return neste_w
+def B_tilt_cartesian(x,y,z):
+    # This function is used in the equations of motion for a particle
+    r=np.sqrt(x**2+y**2+z**2) # The distance from origin
+    Bx = (3*x*(m0*np.sin(alpha)*x+m0*np.cos(alpha)*z)/r**5)- m0*np.sin(alpha)/r**3
+    By = 3*y*(m0*np.sin(alpha)*x+m0*np.cos(alpha)*z)/r**5
+    Bz = (3*z*(m0*np.sin(alpha)*x+m0*np.cos(alpha)*z)/r**5) - m0*np.cos(alpha)/r**3
+    B_vec=np.array([Bx,By,Bz])
+    return B_vec
+def B_mesh_tilt_cartesian(x,y,z):
+    # This function is for plotting the magnetic field
+    mu_0 = 4*np.pi*10**(-7) # Vacuum permeability [H/m]
+    m0=7.95e22 # Magnetic dipole moment
+    alpha = 11.5 * np.pi / 180 # Tilt angle, radian
+    X,Z=np.meshgrid(x,z)
+    Y,Z=np.meshgrid(y,z)
+    r=np.sqrt(X**2+Z**2+Y**2)
+    Bx = -(3*X*(m0*np.sin(alpha)*X+m0*np.cos(alpha)*Z)/r**5)+ m0*np.sin(alpha)/r**3
+    By = -3*Y*(m0*np.sin(alpha)*Y+m0*np.cos(alpha)*Z)/r**5
+    Bz = -(3*Z*(m0*np.sin(alpha)*X+m0*np.cos(alpha)*Z)/r**5) + m0*np.cos(alpha)/r**3
+    return (mu_0/(4*np.pi))*Bx,(mu_0/(4*np.pi))**By,(mu_0/(4*np.pi))*Bz
+
+def plot_magnetic_field(x,y,z,Bx,By,Bz):
+    r_E = 6371e3 # 6371 km, radius of Earth
+    ### xz- plane ###
+    fig,ax=plt.subplots()
+    color = 2 * np.log(np.hypot(Bx, Bz))
+    ax.streamplot(x, z, Bx, Bz, color=color, linewidth=1, cmap=plt.cm.viridis, density=1.2, arrowstyle='->', arrowsize=1.5)
+    earth_circle = plt.Circle((0, 0), r_E, color='blue',zorder=2)
+    plt.axhline(y=0, color='black', linestyle='-',label='Ecliptic plane')
+    ax.set_visible(True)
+    ax.add_patch(earth_circle)#ax.add_patch(Circle((0,0), r_E, color='b', zorder=100))
+    ax.set_xlabel('$x [m]$')
+    ax.set_ylabel('$z [m]$')
+    ax.set_aspect('equal')
+    title='Magnetic dipole field'
+    ax.set_title(title)
+    plt.show()
+
+    ### xy-plane ###
+    fig,ax=plt.subplots()
+    color = 2 * np.log(np.hypot(Bx, By))
+    ax.streamplot(x, y, Bx, By, color=color, linewidth=1, cmap=plt.cm.viridis, density=1.2, arrowstyle='->', arrowsize=1.5)
+    earth_circle = plt.Circle((0, 0), r_E, color='blue',zorder=2)
+    ax.set_visible(True)
+    ax.add_patch(earth_circle)#ax.add_patch(Circle((0,0), r_E, color='b', zorder=100))
+    ax.set_xlabel('$x [m]$')
+    ax.set_ylabel('$y [m]$')
+    ax.set_aspect('equal')
+    title='Magnetic dipole field'
+    ax.set_title(title)
+    plt.show()
+
+def test_velocity_magnitude(M,t_mat):
+    ## Test condition for accuracy
+    N = np.shape(M)[1]
+    for i in range(5):
+        vx=M[0,i,0,:]
+        vy=M[0,i,1,:]
+        vz=M[0,i,2,:]
+        v = np.sqrt(vx**2+vy**2+vz**2)
+        plt.plot(t_mat,v)
+        plt.title("Speed of particle")
+        plt.ylabel("Magnitude of velocity")
+        plt.xlabel("Time")
+        plt.ylim(-0.1,4)
+        plt.show()
+
+
+def particle_in_field(vel_init, pos_init):
+    # This function collects the position and the velocity of the particles over time
+    h= 0.1 # time step
+    t_max=500 # time end
+    t_start=0
+    N = int((abs(t_max-t_start)/h)) # how many steps in total
+    t_mat = np.linspace(t_start, t_max, abs(N+1)) # matrix of time
+    part_number = np.shape(pos_init)[0] # Number of particles
+    M1 = np.zeros([part_number,3, N+1]) # Initialize array for velocities
+    M1[:,:,0] = vel_init
+    M2=np.zeros([part_number,3,N+1])
+    M2[:,:,0] = pos_init # Initialize array for positions
+    M=np.array([M1,M2])
+    for i in range(0,N): # for each timestep..
+        for j in range(0,part_number): # for every particle..
+            xi,yi,zi = M[1,j,:,i] # Position (x,y,z) of a particle
+            B_i= B_tilt_cartesian(xi,yi,zi) # The magnetic field at that position
+            M[:,j,:,i+1] = stegRK4(M[:,j,:,i], t_mat[i], h, f_r,B_i)
+    return M, t_mat
+
+
+def magnetic_field():
+    x_range = 30000e3 # km
+    y_range = 30000e3 # km
+    z_range = 30000e3 # km
+    nx = 100
+    ny=100
+    nz=100
+    x= np.linspace(x_range/4, x_range, nx)
+    y=np.linspace(-y_range, y_range, ny)
+    z= np.linspace(-z_range, z_range, nz)
+    Bx,By,Bz=B_mesh_tilt_cartesian(x,y,z)
+    plot_magnetic_field(x,y,z,Bx,By,Bz)
+
+def create_initial_conditions():
+    # The first two elements keeps initial position constant, but varies the speed
+    position_list=[[-10*r_E,0,0],[-10*r_E,0,0]]
+    velocity_list=[[0.5,0,0],[2,0,0]]
+    for i in range(0,20):
+        # the next elements changes up the z-position, but keeps velocity constant
+        vx=1
+        vy=0
+        vz=0
+        x = -10*r_E
+        y=0
+        z=2*i*(-1)**i*r_E
+        position=[x,y,z]
+        velocity=[vx,vy,vz]
+        position_list.append(position)
+        velocity_list.append(velocity)
+    pos_init = np.array(position_list)
+    vel_init=np.array(velocity_list)
+    return pos_init, vel_init
+
+
+def saving_data_to_file():
+    N = np.shape(M)[1]
+    for i in range(N):
+        filename_pos = 'position'+str(i)+'.txt'
+        filename_vel= 'velocity'+str(i)+'.txt'
+        np.savetxt(filename_pos, M[1,i,:,:]) # create file
+        np.savetxt(filename_vel,M[0,i,:,:])
+
+
+def loading_data(N): # N textfiles
+    x_list=[]
+    y_list=[]
+    z_list=[]
+    for i in range(N):
+        filename_pos = 'position'+str(i)+'.txt'
+        x,y,z=np.loadtxt(filename_pos)
+        x_list.append(x)
+        y_list.append(y)
+        z_list.append(z)
+    return x_list,y_list,z_list
+
+def plot_N_particles(x_list,y_list,z_list,N):
+    # This function plots the trajectories of N+1 particles, both in 2d and 3d.
+    ## 2D figure
+    fig, (ax1,ax2,ax3) = plt.subplots(3)
+    for i in range(N):
+        x=x_list[i]
+        y=y_list[i]
+        z=z_list[i]
+        ax1.plot([0],[0],markersize=1)
+        ax1.plot(x,y,label="Particle number " + str(i+1))
+        ax2.plot(x,z,label="Particle number " + str(i+1) )
+        ax3.plot(y,z,label="Particle number " + str(i+1) )
+    a=20
+    ax1.set_xlim(-a,a/4)
+    ax1.set_ylim(-a,30)
+    ax2.set_xlim(-a,a/4)
+    ax2.set_ylim(-a,30)
+    ax3.set_xlim(-a,a/4)
+    ax3.set_ylim(-a,30)
+    ax1.set_xlabel('$x [m]$')
+    ax1.set_ylabel('$y [m]$')
+    ax2.set_xlabel('$x [m]$')
+    ax2.set_ylabel('$z [m]$')
+    ax3.set_xlabel('$y [m]$')
+    ax3.set_ylabel('$z [m]$')
+    plt.show()
+    #3D figure
+    fig = plt.figure()
+    ax4 = fig.add_subplot(111, projection='3d')
+    for i in range(N):
+        x=x_list[i]
+        y=y_list[i]
+        z=z_list[i]
+        ax4.plot3D(x, y, z,label='Particle number ' + str(i+1))
+    ax4.set_xlim3d(-10,10)
+    ax4.set_ylim3d(-10,10)
+    ax4.set_zlim3d(-10, 10)
+    ax4.scatter([0], [0], [0], color="blue", s=200)
+    plt.xlabel('x')
+    plt.ylabel('y')
+    ax4.set_title('Charged particle trajectories')
+    ax4.set_zlabel('z')
+    plt.show()
+
+
+### Calculate and plot the magnetic field #####
+#magnetic_field()
+
+### SOLAR WIND SIMULATION ###
+r_E = 1# Radius of Earth
+m0 =3 # Magnetic moment
+m = 10 # Mass of a proton
+q = 2500 # Charge of a proton
+alpha = 11.5 * np.pi / 180 # Tilt angle in radian
+
+
+
+pos_init, vel_init = create_initial_conditions()
+M,t_mat = particle_in_field(vel_init, pos_init)
+#saving_data_to_file() # save data to file
+#x_list,y_list,z_list = loading_data(10)
+#plot_N_particles(x_list,y_list,z_list,5)
+
+
+#test_velocity_magnitude(M,t_mat)
